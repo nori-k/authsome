@@ -1,0 +1,79 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String               @id @default(uuid(7))
+  email               String?              @unique // Primary email, could be null if user only uses social login
+  password            String?              // パスワード認証用（nullable）
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  identities          Identity[]
+  webAuthnCredentials WebAuthnCredential[]
+  refreshTokens       RefreshToken[]
+}
+
+enum ProviderType {
+  email
+  google
+  apple
+}
+
+model Identity {
+  id           String    @id @default(uuid(7))
+  userId       String
+  provider     ProviderType // e.g., "email", "google", "apple"
+  providerId   String    // Unique ID for the provider (email for "email", OAuth ID for social)
+  passwordHash String?   // Hashed password for "email" provider
+  email        String?   // Email associated with this identity (could be different from User.email)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerId]) // Each provider+id pair must be unique
+  @@index([userId])
+  @@index([email]) // For quick lookup by email
+}
+
+model WebAuthnCredential {
+  id            String    @id @default(uuid(7))
+  userId        String
+  credentialId  String    @unique // Base64URL encoded credential ID
+  publicKey     String    // Base64URL encoded public key
+  counter       BigInt
+  transports    String[]  @default([])
+  attestationType String
+  aaguid        String
+  name          String? // Optional user-provided name for the passkey
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid(7))
+  userId    String
+  token     String   @unique // Hashed refresh token
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

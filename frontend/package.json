@@ -1,0 +1,21 @@
+{
+  "name": "frontend",
+  "version": "1.0.0",
+  "description": "Static frontend for Passkey Auth Demo",
+  "private": true,
+  "scripts": {
+    "start": "serve public -l 8080"
+  },
+  "keywords": [
+    "frontend",
+    "static",
+    "auth",
+    "passkey",
+    "demo"
+  ],
+  "author": "nori-k",
+  "license": "MIT",
+  "dependencies": {
+    "serve": "^14.2.1"
+  }
+}

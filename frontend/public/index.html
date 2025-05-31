@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fullstack Passkey Auth Demo</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+      }
+      div {
+        margin-bottom: 10px;
+      }
+      input {
+        padding: 8px;
+        margin: 5px;
+        width: 250px;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+      }
+      #messages {
+        margin-top: 20px;
+        color: green;
+      }
+      #error {
+        margin-top: 20px;
+        color: red;
+      }
+      #current-user {
+        margin-top: 20px;
+        border: 1px solid #ccc;
+        padding: 10px;
+        width: 300px;
+      }
+      #passkey-list {
+        margin-top: 20px;
+        border: 1px solid #ccc;
+        padding: 10px;
+        width: 300px;
+      }
+      .credential-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px dashed #eee;
+      }
+      .credential-item:last-child {
+        border-bottom: none;
+      }
+      #identity-list {
+        margin-top: 20px;
+        border: 1px solid #ccc;
+        padding: 10px;
+        width: 300px;
+      }
+      .identity-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px dashed #eee;
+      }
+      .identity-item:last-child {
+        border-bottom: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Fullstack Passkey Auth Demo</h1>
+
+    <h2>Register / Login</h2>
+    <div>
+      <input
+        type="email"
+        id="email"
+        placeholder="Email"
+        value="user@example.com"
+      />
+      <input
+        type="password"
+        id="password"
+        placeholder="Password"
+        value="password123"
+      />
+      <button id="registerBtn">Register (Email/Password)</button>
+      <button id="loginBtn">Login (Email/Password)</button>
+    </div>
+
+    <h2>Social Login</h2>
+    <div>
+      <button id="googleLoginBtn">Login with Google</button>
+      <button id="appleLoginBtn">Login with Apple</button>
+      <button id="twitterLoginBtn">Login with Twitter</button>
+    </div>
+
+    <h2>Passkey Management</h2>
+    <div>
+      <button id="registerPasskeyBtn">Register Passkey</button>
+      <button id="loginPasskeyBtn">Login with Passkey</button>
+    </div>
+
+    <hr />
+    <div id="messages"></div>
+    <div id="error"></div>
+    <div id="current-user">
+      <h3>Current User</h3>
+      <p>ID: <span id="user-id">N/A</span></p>
+      <p>Email: <span id="user-email">N/A</span></p>
+      <button id="logoutBtn">Logout</button>
+    </div>
+
+    <div id="identity-list">
+      <h3>Linked Accounts</h3>
+      <ul id="identity-ul">
+        <li>No linked accounts.</li>
+      </ul>
+      <h4>Link New Accounts</h4>
+      <button id="linkGoogleBtn">Link Google Account</button>
+      <button id="linkAppleBtn">Link Apple Account</button>
+      <button id="linkTwitterBtn">Link Twitter Account</button>
+    </div>
+
+    <div id="passkey-list">
+      <h3>Registered Passkeys</h3>
+      <ul id="passkey-ul">
+        <li>No Passkeys registered.</li>
+      </ul>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>

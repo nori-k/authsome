@@ -1,0 +1,424 @@
+import { Test, type TestingModule } from '@nestjs/testing';
+import { AuthController } from './auth.controller';
+import { AuthService } from './services/auth.service';
+import { PasskeyService } from './services/passkey.service';
+import type {
+  AuthRegisterDto,
+  AuthLoginDto,
+  PasskeyRegisterFinishDto,
+  PasskeyLoginFinishDto,
+} from './dto/auth.dto';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+
+// テスト用型定義（interfaceで）
+interface TestVerifiedRegistrationResponse {
+  verified: boolean;
+  registrationInfo: {
+    credential: { id: string; publicKey: Buffer; counter: number };
+    fmt: string;
+    aaguid: string;
+  };
+}
+interface TestPublicKeyCredentialCreationOptionsJSON {
+  rp: { name: string; id: string };
+  user: { id: string; name: string; displayName: string };
+  challenge: string;
+  pubKeyCredParams: unknown[];
+  timeout: number;
+}
+import type { WebAuthnCredential, User } from '@prisma/client';
+
+describe('AuthController', () => {
+  let controller: AuthController;
+  let authService: jest.Mocked<AuthService>;
+  let passkeyService: jest.Mocked<PasskeyService>;
+  let reply: Partial<FastifyReply>;
+
+  function createRequestMock(
+    user: Partial<User>,
+    cookies: Record<string, string> = {},
+  ): FastifyRequest {
+    return {
+      user,
+      cookies,
+      id: '',
+      params: {},
+      raw: {},
+      query: {},
+      log: { info: () => {}, error: () => {}, warn: () => {}, debug: () => {} },
+      body: {},
+      headers: {},
+      ip: '',
+      ips: [],
+      method: 'GET',
+      url: '',
+      hostname: '',
+      protocol: 'http',
+      connection: {},
+      socket: {},
+      get: () => '',
+    } as unknown as FastifyRequest;
+  }
+
+  beforeEach(async () => {
+    authService = {
+      registerEmailPassword: jest.fn(),
+      loginEmailPassword: jest.fn(),
+      generateTokens: jest.fn(),
+      refreshTokens: jest.fn(),
+      logout: jest.fn(),
+      getIdentities: jest.fn(),
+      deleteIdentity: jest.fn(),
+      findOrCreateUserAndIdentity: jest.fn(),
+      getProfile: jest.fn(),
+    } as unknown as jest.Mocked<AuthService>;
+    passkeyService = {
+      generatePasskeyRegistrationOptions: jest.fn(),
+      verifyPasskeyRegistration: jest.fn(),
+      verifyPasskeyAuthentication: jest.fn(),
+      getPasskeyCredentials: jest.fn(),
+      deletePasskeyCredential: jest.fn(),
+    } as unknown as jest.Mocked<PasskeyService>;
+    reply = {
+      setCookie: jest.fn(),
+      clearCookie: jest.fn(),
+      redirect: jest.fn(),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [AuthController],
+      providers: [
+        { provide: AuthService, useValue: authService },
+        { provide: PasskeyService, useValue: passkeyService },
+      ],
+    }).compile();
+    controller = module.get<AuthController>(AuthController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+
+  describe('registerEmailPassword', () => {
+    it('should call AuthService and return user', async () => {
+      const dto: AuthRegisterDto = {
+        email: 'a@b.com',
+        password: 'pw',
+      };
+      const user = {
+        id: '1',
+        email: 'a@b.com',
+      };
+      authService.registerEmailPassword.mockResolvedValue(user);
+      await expect(controller.registerEmailPassword(dto)).resolves.toEqual({
+        id: '1',
+        email: 'a@b.com',
+      });
+      expect(authService.registerEmailPassword.mock.calls[0][0]).toEqual({
+        email: 'a@b.com',
+        password: 'pw',
+      });
+    });
+  });
+
+  describe('loginEmailPassword', () => {
+    it('should set cookies and return tokens', async () => {
+      const dto: AuthLoginDto = {
+        email: 'a@b.com',
+        password: 'pw',
+      };
+      const result = {
+        accessToken: 'a',
+        refreshToken: 'r',
+        userId: 'u',
+      };
+      authService.loginEmailPassword.mockResolvedValue(result);
+      await expect(
+        controller.loginEmailPassword(dto, reply as FastifyReply),
+      ).resolves.toEqual({
+        accessToken: 'a',
+        refreshToken: 'r',
+        userId: 'u',
+      });
+      expect(authService.loginEmailPassword.mock.calls[0][0]).toEqual({
+        email: 'a@b.com',
+        password: 'pw',
+      });
+      expect(reply.setCookie).toBeCalledTimes(2);
+    });
+  });
+
+  describe('refreshTokens', () => {
+    it('should refresh tokens and set cookies', async () => {
+      const request = createRequestMock({ id: 'u' }, { refresh_token: 'old' });
+      const result = {
+        accessToken: 'a',
+        refreshToken: 'r',
+        userId: 'u',
+      };
+      authService.refreshTokens.mockResolvedValue(result);
+      await expect(
+        controller.refreshTokens(request, reply as FastifyReply),
+      ).resolves.toMatchObject({
+        accessToken: 'a',
+        refreshToken: 'r',
+        userId: 'u',
+      });
+      expect(authService.refreshTokens.mock.calls[0][0]).toBe('u');
+      expect(authService.refreshTokens.mock.calls[0][1]).toBe('old');
+      expect(reply.setCookie).toBeCalledTimes(2);
+    });
+  });
+
+  describe('logout', () => {
+    it('should clear cookies and call logout', async () => {
+      const request = createRequestMock({ id: 'u' }, { refresh_token: 'r' });
+      authService.logout.mockResolvedValue();
+      await expect(
+        controller.logout(request, reply as FastifyReply),
+      ).resolves.toEqual({
+        message: 'Logged out successfully!',
+      });
+      expect(authService.logout.mock.calls[0][0]).toBe('u');
+      expect(authService.logout.mock.calls[0][1]).toBe('r');
+      expect(reply.clearCookie).toBeCalledTimes(2);
+    });
+  });
+
+  describe('getProfile', () => {
+    it('should return user from request', async () => {
+      const user: User = {
+        id: 'u',
+        email: 'a@b.com',
+        password: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const request = createRequestMock(user);
+      await expect(controller.getProfile(request)).resolves.toEqual(user);
+    });
+  });
+
+  describe('startPasskeyRegistration', () => {
+    it('should call PasskeyService', async () => {
+      const user: User = {
+        id: 'u',
+        email: 'a@b.com',
+        password: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const request = createRequestMock(user);
+      const options: TestPublicKeyCredentialCreationOptionsJSON = {
+        rp: { name: 'authsome', id: 'localhost' },
+        user: { id: 'u', name: 'a@b.com', displayName: 'a@b.com' },
+        challenge: 'challenge',
+        pubKeyCredParams: [],
+        timeout: 60000,
+      };
+      passkeyService.generatePasskeyRegistrationOptions.mockResolvedValue(
+        options as unknown as ReturnType<
+          typeof passkeyService.generatePasskeyRegistrationOptions
+        >,
+      );
+      await expect(controller.startPasskeyRegistration(request)).resolves.toBe(
+        options,
+      );
+      // unbound method警告回避: 直接参照せずarrow functionで呼び出し
+      const callArg =
+        passkeyService.generatePasskeyRegistrationOptions.mock.calls[0][0];
+      expect(callArg).toBe('u');
+    });
+  });
+
+  describe('finishPasskeyRegistration', () => {
+    it('should call PasskeyService', async () => {
+      const user: User = {
+        id: 'u',
+        email: 'a@b.com',
+        password: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const request = createRequestMock(user);
+      const dto: PasskeyRegisterFinishDto = {
+        response: {},
+        challenge: 'c',
+      } as PasskeyRegisterFinishDto;
+      const verified: TestVerifiedRegistrationResponse = {
+        verified: true,
+        registrationInfo: {
+          credential: { id: 'id', publicKey: Buffer.from(''), counter: 0 },
+          fmt: 'none',
+          aaguid: 'aaguid',
+        },
+      };
+      passkeyService.verifyPasskeyRegistration.mockResolvedValue(
+        verified as unknown as ReturnType<
+          typeof passkeyService.verifyPasskeyRegistration
+        >,
+      );
+      await expect(
+        controller.finishPasskeyRegistration(request, dto),
+      ).resolves.toEqual(verified);
+      const regCall0 =
+        passkeyService.verifyPasskeyRegistration.mock.calls[0][0];
+      const regCall1 =
+        passkeyService.verifyPasskeyRegistration.mock.calls[0][1];
+      const regCall2 =
+        passkeyService.verifyPasskeyRegistration.mock.calls[0][2];
+      expect(regCall0).toBe('u');
+      expect(regCall1).toEqual({});
+      expect(regCall2).toBe('c');
+    });
+  });
+
+  describe('startPasskeyLogin', () => {
+    it('should call PasskeyService', async () => {
+      const options: TestPublicKeyCredentialCreationOptionsJSON = {
+        rp: { name: 'authsome', id: 'localhost' },
+        user: { id: 'u', name: 'a@b.com', displayName: 'a@b.com' },
+        challenge: 'challenge',
+        pubKeyCredParams: [],
+        timeout: 60000,
+      };
+      passkeyService.generatePasskeyRegistrationOptions.mockResolvedValue(
+        options as unknown as ReturnType<
+          typeof passkeyService.generatePasskeyRegistrationOptions
+        >,
+      );
+      // unbound method警告回避: mock.callsで直接引数を検証
+      await expect(controller.startPasskeyLogin('email')).resolves.toBe(
+        options,
+      );
+      expect(
+        passkeyService.generatePasskeyRegistrationOptions.mock.calls[0][0],
+      ).toBe('email');
+    });
+    it('should throw if emailOrUserId is missing', async () => {
+      await expect(controller.startPasskeyLogin(undefined)).rejects.toThrow();
+    });
+  });
+
+  describe('finishPasskeyLogin', () => {
+    it('should call PasskeyService', async () => {
+      const dto: PasskeyLoginFinishDto = {
+        response: {},
+        challenge: 'c',
+      } as PasskeyLoginFinishDto;
+      const result = { accessToken: 'a', refreshToken: 'r', userId: 'u' };
+      passkeyService.verifyPasskeyAuthentication.mockResolvedValue(result);
+      await expect(
+        controller.finishPasskeyLogin(
+          { user: { id: 'u' } } as FastifyRequest,
+          dto,
+        ),
+      ).resolves.toEqual(result);
+      const authCall0 =
+        passkeyService.verifyPasskeyAuthentication.mock.calls[0][0];
+      const authCall1 =
+        passkeyService.verifyPasskeyAuthentication.mock.calls[0][1];
+      expect(authCall0).toEqual(dto.response);
+      expect(authCall1).toBe(dto.challenge);
+    });
+  });
+
+  describe('getPasskeyCredentials', () => {
+    it('should call PasskeyService', async () => {
+      const user: User = {
+        id: 'u',
+        email: 'a@b.com',
+        password: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const request = createRequestMock(user);
+      const cred: Pick<
+        WebAuthnCredential,
+        | 'id'
+        | 'credentialId'
+        | 'transports'
+        | 'attestationType'
+        | 'aaguid'
+        | 'name'
+        | 'createdAt'
+      > = {
+        id: 'id',
+        credentialId: 'cid',
+        transports: [],
+        attestationType: 'none',
+        aaguid: 'aaguid',
+        name: 'n',
+        createdAt: new Date(),
+      };
+      passkeyService.getPasskeyCredentials.mockResolvedValue([cred]);
+      await expect(controller.getPasskeyCredentials(request)).resolves.toEqual([
+        cred,
+      ]);
+      expect(passkeyService.getPasskeyCredentials.mock.calls[0][0]).toBe('u');
+    });
+  });
+
+  describe('deletePasskeyCredential', () => {
+    it('should call PasskeyService and return message', async () => {
+      const user: User = {
+        id: 'u',
+        email: 'a@b.com',
+        password: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const request = createRequestMock(user);
+      passkeyService.deletePasskeyCredential.mockResolvedValue();
+      await expect(
+        controller.deletePasskeyCredential(request, 'cid'),
+      ).resolves.toEqual({
+        message: 'Passkey credential deleted successfully',
+      });
+      const delCall1 = passkeyService.deletePasskeyCredential.mock.calls[0][1];
+      expect(delCall1).toBe('cid');
+    });
+  });
+
+  describe('getIdentities', () => {
+    it('should call AuthService', async () => {
+      const user: User = {
+        id: 'u',
+        email: 'a@b.com',
+        password: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const request = createRequestMock(user);
+      const identity = {
+        id: 'id',
+        provider: 'google',
+        email: 'a@b.com',
+        createdAt: new Date(),
+      };
+      authService.getIdentities.mockResolvedValue([identity]);
+      await expect(controller.getIdentities(request)).resolves.toEqual([
+        identity,
+      ]);
+      expect(authService.getIdentities.mock.calls[0][0]).toBe('u');
+    });
+  });
+
+  describe('deleteIdentity', () => {
+    it('should call AuthService and return message', async () => {
+      const user: User = {
+        id: 'u',
+        email: 'a@b.com',
+        password: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const request = createRequestMock(user);
+      authService.deleteIdentity.mockResolvedValue();
+      await expect(controller.deleteIdentity(request, 'id')).resolves.toEqual({
+        message: 'Identity deleted successfully',
+      });
+      expect(authService.deleteIdentity.mock.calls[0][0]).toBe('u');
+      expect(authService.deleteIdentity.mock.calls[0][1]).toBe('id');
+    });
+  });
+});
