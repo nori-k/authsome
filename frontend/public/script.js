@@ -59,6 +59,7 @@ async function fetchAPI(url, method, body = null, auth = true) {
       data.message || `API request failed with status ${response.status}`,
     );
   }
+  return data;
 }
 
 // --- UI Helpers ---
@@ -251,7 +252,13 @@ loginBtn.onclick = async () => {
       false,
     );
     console.log('loginBtn', data); // デバッグ用
-    updateUserInfo(data.userId, emailInput.value);
+    if (!data || !data.userId) {
+      updateUserInfo(null, null);
+      displayMessage('Login failed: No userId returned from server.', true);
+      return;
+    }
+    // 正常時はuserId/emailをUIに反映
+    updateUserInfo(data.userId, data.email);
     displayMessage('Logged in successfully!');
     fetchProfile();
   } catch (error) {
@@ -301,6 +308,16 @@ registerPasskeyBtn.onclick = async () => {
     }
     if (options.user && typeof options.user.id === 'string') {
       options.user.id = base64urlToUint8Array(options.user.id);
+    }
+    // excludeCredentials[].id もUint8Arrayに変換
+    if (Array.isArray(options.excludeCredentials)) {
+      options.excludeCredentials = options.excludeCredentials.map((cred) => ({
+        ...cred,
+        id:
+          typeof cred.id === 'string'
+            ? base64urlToUint8Array(cred.id)
+            : cred.id,
+      }));
     }
 
     const credential = await navigator.credentials.create({
@@ -374,6 +391,26 @@ loginPasskeyBtn.onclick = async () => {
       false,
     );
 
+    // challenge, allowCredentials[].id をUint8Arrayに変換（堅牢化）
+    if (options.challenge && typeof options.challenge === 'string') {
+      options.challenge = base64urlToUint8Array(options.challenge);
+    }
+    if (Array.isArray(options.allowCredentials)) {
+      options.allowCredentials = options.allowCredentials.map((cred) => ({
+        ...cred,
+        id:
+          cred.id && typeof cred.id === 'string'
+            ? base64urlToUint8Array(cred.id)
+            : cred.id,
+      }));
+    }
+    // extensions: { credProps: true } は認証時は不要なので削除
+    if (options.extensions) {
+      delete options.extensions;
+    }
+    // デバッグ用: challenge型を確認
+    console.log('Passkey login options:', options);
+
     const credential = await navigator.credentials.get({ publicKey: options });
 
     const assertionResponse = {
@@ -395,8 +432,12 @@ loginPasskeyBtn.onclick = async () => {
       clientExtensionResults: credential.clientExtensionResults,
     };
 
+    // clientDataJSONはnumber[]なのでUint8Arrayに変換してからdecode
+    const clientDataJSONBuffer = new Uint8Array(
+      assertionResponse.response.clientDataJSON,
+    );
     const clientData = JSON.parse(
-      new TextDecoder().decode(assertionResponse.response.clientDataJSON),
+      new TextDecoder().decode(clientDataJSONBuffer),
     );
     const clientChallenge = clientData.challenge;
 
@@ -410,7 +451,10 @@ loginPasskeyBtn.onclick = async () => {
       false,
     );
 
-    updateUserInfo(data.userId, emailInput.value || 'N/A');
+    updateUserInfo(
+      data && data.userId ? data.userId : null,
+      emailInput.value || 'N/A',
+    );
     displayMessage('Logged in with Passkey successfully!');
     fetchProfile();
   } catch (error) {

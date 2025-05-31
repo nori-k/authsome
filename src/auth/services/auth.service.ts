@@ -55,9 +55,12 @@ export class AuthService {
    * @returns Access/refresh tokens and userId
    * @throws UnauthorizedException
    */
-  async loginEmailPassword(
-    dto: AuthLoginDto,
-  ): Promise<{ accessToken: string; refreshToken: string; userId: string }> {
+  async loginEmailPassword(dto: AuthLoginDto): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    userId: string;
+    email: string | null;
+  }> {
     const user = await this._prisma.user.findUnique({
       where: { email: dto.email },
     });
@@ -84,7 +87,7 @@ export class AuthService {
         expiresAt,
       },
     });
-    return { accessToken, refreshToken, userId: user.id };
+    return { accessToken, refreshToken, userId: user.id, email: user.email };
   }
 
   /**

@@ -83,7 +83,12 @@ export class AuthController {
   async loginEmailPassword(
     @NestBody() dto: AuthLoginDto,
     @Res({ passthrough: true }) reply: FastifyReply,
-  ): Promise<{ accessToken: string; refreshToken: string; userId: string }> {
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    userId: string;
+    email: string | null;
+  }> {
     const result = await this._authService.loginEmailPassword(dto);
     this.setAuthCookies(reply, result.accessToken, result.refreshToken);
     return result;

@@ -24,18 +24,20 @@ export class PasskeyService {
    * @returns Registration options
    */
   async generatePasskeyRegistrationOptions(
-    userId: string,
+    userIdOrEmail: string,
   ): Promise<ReturnType<typeof generateRegistrationOptions>> {
-    const user = await this._prisma.user.findUnique({ where: { id: userId } });
-    if (
-      user?.email === null ||
-      user?.email === undefined ||
-      user.email === ''
-    ) {
+    // ユーザーIDで検索し、なければメールアドレスで検索
+    let user = await this._prisma.user.findUnique({
+      where: { id: userIdOrEmail },
+    });
+    user ??= await this._prisma.user.findUnique({
+      where: { email: userIdOrEmail },
+    });
+    if (!user?.email) {
       throw new UnauthorizedException('User not found or email missing');
     }
     const credentials = await this._prisma.webAuthnCredential.findMany({
-      where: { userId },
+      where: { userId: user.id },
     });
     const options = generateRegistrationOptions({
       rpName: 'authsome',
