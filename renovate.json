@@ -1,0 +1,15 @@
+{
+  "extends": ["config:base"],
+  "labels": ["dependencies", "renovate"],
+  "pruneStaleBranches": true,
+  "automerge": false,
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    }
+  ],
+  "onboarding": true,
+  "platform": "github",
+  "dependencyDashboard": true
+}
