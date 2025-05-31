@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { User, ProviderType } from '@prisma/client';
@@ -28,13 +32,21 @@ export class AuthService {
     dto: AuthRegisterDto,
   ): Promise<{ id: string; email: string | null }> {
     const hashedPassword = await bcrypt.hash(dto.password, 10);
-    const user = await this._prisma.user.create({
-      data: {
-        email: dto.email,
-        password: hashedPassword,
-      },
-    });
-    return { id: user.id, email: user.email };
+    try {
+      const user = await this._prisma.user.create({
+        data: {
+          email: dto.email,
+          password: hashedPassword,
+        },
+      });
+      return { id: user.id, email: user.email };
+    } catch (error) {
+      const err = error as { code?: string; meta?: { target?: string[] } };
+      if (err.code === 'P2002' && err.meta?.target?.includes('email')) {
+        throw new ConflictException('This email is already registered.');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -57,11 +69,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
     const accessToken = this._jwtService.sign(
-      { id: user.id, email: user.email },
+      { sub: user.id, email: user.email },
       { expiresIn: '15m' },
     );
     const refreshToken = this._jwtService.sign(
-      { id: user.id, email: user.email },
+      { sub: user.id, email: user.email },
       { expiresIn: '7d' },
     );
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
@@ -85,11 +97,11 @@ export class AuthService {
     refreshToken: string;
   } {
     const accessToken = this._jwtService.sign(
-      { id: userId },
+      { sub: userId },
       { expiresIn: '15m' },
     );
     const refreshToken = this._jwtService.sign(
-      { id: userId },
+      { sub: userId },
       { expiresIn: '7d' },
     );
     return { accessToken, refreshToken };

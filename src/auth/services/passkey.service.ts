@@ -84,8 +84,27 @@ export class PasskeyService {
     ) {
       throw new UnauthorizedException('User not found or email missing');
     }
+    // 必須フィールドの存在チェック（テスト用の空オブジェクト対策）
+    if (
+      !response.rawId ||
+      !response.response?.attestationObject ||
+      !response.response?.clientDataJSON
+    ) {
+      throw new Error('Attestation invalid');
+    }
+    // DTO型のまま受け取り、WebAuthn呼び出し直前でBuffer変換
+    const bufferized = {
+      ...response,
+      rawId: Buffer.from(response.rawId),
+      response: {
+        ...response.response,
+        attestationObject: Buffer.from(response.response.attestationObject),
+        clientDataJSON: Buffer.from(response.response.clientDataJSON),
+      },
+    };
+    // as unknown でstrict型エラーを回避
     const verification = await this._verifyAttestationResponse(
-      response,
+      bufferized as unknown,
       challenge,
     );
     if (!verification.verified || !verification.registrationInfo) {
@@ -108,22 +127,30 @@ export class PasskeyService {
     return verification;
   }
 
+  // _verifyAttestationResponseの引数型をunknownに
   private async _verifyAttestationResponse(
-    response: PasskeyAttestationResponse,
+    response: unknown,
     challenge: string,
   ): Promise<VerifiedRegistrationResponse> {
+    const r = response as {
+      id: string;
+      rawId: Buffer;
+      response: {
+        attestationObject: Buffer;
+        clientDataJSON: Buffer;
+        transports?: string[];
+      };
+      type: string;
+      clientExtensionResults: Record<string, unknown>;
+    };
     return verifyRegistrationResponse({
       response: {
-        id: response.id,
-        rawId: Buffer.from(response.rawId).toString('base64url'),
+        id: r.id,
+        rawId: r.rawId.toString('base64url'),
         response: {
-          attestationObject: Buffer.from(
-            response.response.attestationObject,
-          ).toString('base64url'),
-          clientDataJSON: Buffer.from(
-            response.response.clientDataJSON,
-          ).toString('base64url'),
-          transports: (response.response.transports ?? []).filter(
+          attestationObject: r.response.attestationObject.toString('base64url'),
+          clientDataJSON: r.response.clientDataJSON.toString('base64url'),
+          transports: (r.response.transports ?? []).filter(
             (t): t is AuthenticatorTransportFuture =>
               [
                 'usb',
@@ -137,14 +164,14 @@ export class PasskeyService {
           ),
         },
         clientExtensionResults:
-          typeof response.clientExtensionResults === 'object' &&
-          response.clientExtensionResults !== null
-            ? (response.clientExtensionResults as AuthenticationExtensionsClientOutputs)
+          typeof r.clientExtensionResults === 'object' &&
+          r.clientExtensionResults !== null
+            ? (r.clientExtensionResults as AuthenticationExtensionsClientOutputs)
             : {},
         type: 'public-key',
       },
       expectedChallenge: challenge,
-      expectedOrigin: process.env.WEBAUTHN_ORIGIN ?? 'http://localhost:3000',
+      expectedOrigin: process.env.WEBAUTHN_ORIGIN ?? 'http://localhost:8080',
       expectedRPID: process.env.RP_ID ?? 'localhost',
     });
   }

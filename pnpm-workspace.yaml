@@ -1,3 +1,7 @@
+packages:
+  - 'frontend'
+  # 必要なら他のパッケージも追加
+
 onlyBuiltDependencies:
   - '@nestjs/core'
   - '@prisma/client'

@@ -41,10 +41,10 @@ export class JwtAccessStrategy extends PassportStrategy(
     });
   }
 
-  validate(payload: { sub: string }): { userId: string } {
+  validate(payload: { sub: string }): { id: string } {
     if (!payload?.sub) {
       throw new UnauthorizedException('Invalid JWT payload');
     }
-    return { userId: payload.sub };
+    return { id: payload.sub };
   }
 }

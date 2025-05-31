@@ -47,14 +47,14 @@ export class AuthController {
     // Fastify expects seconds for maxAge
     reply.setCookie('access_token', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false, // 開発時は必ずfalseにする
       sameSite: 'lax',
       maxAge: 60 * 15, // 15 minutes
       path: '/',
     });
     reply.setCookie('refresh_token', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: false, // 開発時は必ずfalseにする
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',
@@ -141,6 +141,11 @@ export class AuthController {
     );
   }
 
+  /**
+   * リフレッシュトークンから新しいアクセストークン・リフレッシュトークンを発行
+   */
+  @Post('refresh')
+  @UseGuards(AuthGuard('jwt-refresh'))
   async refreshTokens(
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -150,16 +155,22 @@ export class AuthController {
     accessToken: string;
     refreshToken: string;
   }> {
-    const user = request.user as User;
-    const oldRefreshToken = request.cookies['refresh_token'];
-    const { accessToken, refreshToken, userId } =
-      await this._authService.refreshTokens(user.id, oldRefreshToken);
-    this.setAuthCookies(reply, accessToken, refreshToken);
+    const user = (request.user as { id: string }) ?? null;
+    const refreshToken = request.cookies['refresh_token'] ?? '';
+    if (!user || typeof user.id !== 'string' || !refreshToken) {
+      throw new UnauthorizedException('Invalid refresh request');
+    }
+    const {
+      accessToken,
+      refreshToken: newRefreshToken,
+      userId,
+    } = await this._authService.refreshTokens(user.id, refreshToken);
+    this.setAuthCookies(reply, accessToken, newRefreshToken);
     return {
       message: 'Tokens refreshed successfully!',
       userId,
       accessToken,
-      refreshToken,
+      refreshToken: newRefreshToken,
     };
   }
 
@@ -171,7 +182,7 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<{ message: string }> {
     const user = request.user as User;
-    const refreshToken = request.cookies['refresh_token'];
+    const refreshToken = request.cookies['refresh_token'] ?? '';
     await this._authService.logout(user.id, refreshToken);
     reply.clearCookie('access_token');
     reply.clearCookie('refresh_token');
@@ -181,8 +192,16 @@ export class AuthController {
   // --- プロファイル取得 ---
   @UseGuards(AuthGuard('jwt-access'))
   @Get('profile')
-  getProfile(@Req() request: FastifyRequest): Promise<User | undefined> {
-    return Promise.resolve(request.user);
+  async getProfile(
+    @Req() request: FastifyRequest,
+  ): Promise<{ id: string; email: string | null }> {
+    const user = request.user as { id?: unknown } | undefined;
+    if (!user || typeof user !== 'object' || typeof user.id !== 'string') {
+      throw new UnauthorizedException('Invalid or missing user in request');
+    }
+    const dbUser = await this._authService.getProfile(user.id);
+    if (!dbUser) throw new UnauthorizedException('User not found');
+    return { id: dbUser.id, email: dbUser.email };
   }
 
   // --- Passkey (FIDO2) 関連 ---
@@ -197,11 +216,12 @@ export class AuthController {
 
   @UseGuards(AuthGuard('jwt-access'))
   @Post('passkey/register/finish')
-  finishPasskeyRegistration(
+  async finishPasskeyRegistration(
     @Req() request: FastifyRequest,
     @NestBody() dto: PasskeyRegisterFinishDto,
   ): Promise<VerifiedRegistrationResponse | null> {
     const user = request.user as User;
+    // Buffer変換はサービス層で行うため、ここではDTO型のまま渡す
     return this._passkeyService.verifyPasskeyRegistration(
       user.id,
       dto.response,

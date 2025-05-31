@@ -28,15 +28,23 @@ let currentUserId = localStorage.getItem('userId') || null;
 async function fetchAPI(url, method, body = null, auth = true) {
   const options = {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {},
     credentials: 'include',
   };
   if (body) {
     options.body = JSON.stringify(body);
+    options.headers['Content-Type'] = 'application/json';
   }
 
   const response = await fetch(url, options);
-  const data = await response.json();
+  let data;
+  try {
+    data = await response.json();
+    console.log('fetchAPI response', response, data);
+  } catch (e) {
+    console.error('fetchAPI json parse error', e, response);
+    throw new Error('Invalid JSON response');
+  }
 
   if (!response.ok) {
     if (response.status === 401 && auth) {
@@ -51,7 +59,6 @@ async function fetchAPI(url, method, body = null, auth = true) {
       data.message || `API request failed with status ${response.status}`,
     );
   }
-  return data;
 }
 
 // --- UI Helpers ---
@@ -66,6 +73,10 @@ function displayMessage(msg, isError = false) {
 }
 
 function updateUserInfo(userId = null, email = null) {
+  if (userId === null) {
+    console.trace('updateUserInfo(null, null) called');
+  }
+  console.log('updateUserInfo', userId, email); // 既存のデバッグ用
   currentUserId = userId;
   userIdSpan.textContent = userId || 'N/A';
   userEmailSpan.textContent = email || 'N/A';
@@ -91,7 +102,6 @@ function updateUserInfo(userId = null, email = null) {
 async function tryRefreshToken() {
   try {
     displayMessage('Attempting to refresh token...');
-    // refreshエンドポイントはHttpOnly Cookieのリフレッシュトークンを自動的に使用するため、bodyは不要
     await fetchAPI(`${API_BASE_URL}/auth/refresh`, 'POST', null, false);
     displayMessage('Token refreshed successfully!');
     return true;
@@ -100,7 +110,7 @@ async function tryRefreshToken() {
       `Failed to refresh token: ${refreshError.message}. Please login again.`,
       true,
     );
-    logout(); // リフレッシュ失敗時はログアウト
+    // logout()は呼び出し元で必要に応じて呼ぶ
     return false;
   }
 }
@@ -116,15 +126,12 @@ function logout() {
 
 // --- Fetch User Data ---
 async function fetchProfile() {
-  if (!currentUserId) {
-    updateUserInfo(null, null);
-    return;
-  }
   try {
     const data = await fetchAPI(`${API_BASE_URL}/auth/profile`, 'GET');
     updateUserInfo(data.id, data.email);
     displayMessage('Profile loaded.');
   } catch (error) {
+    updateUserInfo(null, null); // エラー時のみリセット
     displayMessage(error.message, true);
   }
 }
@@ -243,6 +250,7 @@ loginBtn.onclick = async () => {
       },
       false,
     );
+    console.log('loginBtn', data); // デバッグ用
     updateUserInfo(data.userId, emailInput.value);
     displayMessage('Logged in successfully!');
     fetchProfile();
@@ -261,12 +269,22 @@ twitterLoginBtn.onclick = () => {
   window.location.href = `${API_BASE_URL}/auth/twitter`;
 };
 
+// ログアウトボタンのイベントリスナーを明示的に追加
 logoutBtn.onclick = () => {
   logout();
 };
 
 // --- Passkey Functions ---
+function base64urlToUint8Array(base64url) {
+  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  const pad =
+    base64.length % 4 === 0 ? '' : '='.repeat(4 - (base64.length % 4));
+  const binary = atob(base64 + pad);
+  return Uint8Array.from([...binary].map((c) => c.charCodeAt(0)));
+}
+
 registerPasskeyBtn.onclick = async () => {
+  console.log('registerPasskeyBtn clicked', currentUserId);
   if (!currentUserId) {
     displayMessage('Please login first to register a Passkey.', true);
     return;
@@ -277,6 +295,13 @@ registerPasskeyBtn.onclick = async () => {
       `${API_BASE_URL}/auth/passkey/register/start`,
       'POST',
     );
+    // challenge, user.id などをUint8Arrayに変換
+    if (typeof options.challenge === 'string') {
+      options.challenge = base64urlToUint8Array(options.challenge);
+    }
+    if (options.user && typeof options.user.id === 'string') {
+      options.user.id = base64urlToUint8Array(options.user.id);
+    }
 
     const credential = await navigator.credentials.create({
       publicKey: options,
@@ -289,9 +314,7 @@ registerPasskeyBtn.onclick = async () => {
         attestationObject: Array.from(
           new Uint8Array(credential.response.attestationObject),
         ),
-        clientDataJSON: Array.from(
-          new Uint8Array(credential.response.clientDataJSON),
-        ),
+        clientDataJSON: credential.response.clientDataJSON, // ArrayBufferのまま保持
         transports: credential.response.transports || [],
       },
       type: credential.type,
@@ -303,11 +326,25 @@ registerPasskeyBtn.onclick = async () => {
     );
     const clientChallenge = clientData.challenge;
 
+    // サーバー送信時のみ配列化
+    const attestationResponseForServer = {
+      ...attestationResponse,
+      response: {
+        ...attestationResponse.response,
+        attestationObject: Array.from(
+          new Uint8Array(credential.response.attestationObject),
+        ),
+        clientDataJSON: Array.from(
+          new Uint8Array(credential.response.clientDataJSON),
+        ),
+      },
+    };
+
     const data = await fetchAPI(
       `${API_BASE_URL}/auth/passkey/register/finish`,
       'POST',
       {
-        response: attestationResponse,
+        response: attestationResponseForServer,
         challenge: clientChallenge,
       },
     );
@@ -323,10 +360,13 @@ registerPasskeyBtn.onclick = async () => {
 };
 
 loginPasskeyBtn.onclick = async () => {
+  const emailOrUserId = emailInput.value.trim();
+  if (!emailOrUserId) {
+    displayMessage('Please enter your email to login with Passkey.', true);
+    return;
+  }
   try {
     displayMessage('Starting Passkey login...');
-    const emailOrUserId = emailInput.value || undefined;
-
     const options = await fetchAPI(
       `${API_BASE_URL}/auth/passkey/login/start`,
       'POST',
@@ -407,6 +447,8 @@ linkTwitterBtn.onclick = () => {
 
 // --- Page Load Logic ---
 window.onload = () => {
+  console.log('onload', localStorage.getItem('userId'));
+  currentUserId = localStorage.getItem('userId') || null;
   const urlParams = new URLSearchParams(window.location.search);
   const userIdFromParam = urlParams.get('userId');
   const messageFromParam = urlParams.get('message');

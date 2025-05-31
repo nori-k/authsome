@@ -196,7 +196,12 @@ describe('AuthController', () => {
         updatedAt: new Date(),
       };
       const request = createRequestMock(user);
-      await expect(controller.getProfile(request)).resolves.toEqual(user);
+      authService.getProfile.mockResolvedValue(user);
+      // getProfileは {id, email} だけ返すので、期待値も合わせる
+      await expect(controller.getProfile(request)).resolves.toEqual({
+        id: user.id,
+        email: user.email,
+      });
     });
   });
 
