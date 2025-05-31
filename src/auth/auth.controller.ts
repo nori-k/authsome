@@ -8,6 +8,7 @@ import {
   Res,
   Delete,
   Param,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './services/auth.service';
 import {
@@ -21,12 +22,15 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { User } from '@prisma/client';
 import { PasskeyService } from './services/passkey.service';
 import type { VerifiedRegistrationResponse } from '@simplewebauthn/server';
+import { JwtService } from '@nestjs/jwt';
+import { VerifyJwtDto } from './dto/verify-jwt.dto';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly _authService: AuthService,
     private readonly _passkeyService: PasskeyService,
+    private readonly _jwtService: JwtService,
   ) {}
 
   /**
@@ -295,5 +299,24 @@ export class AuthController {
     reply.redirect(
       `${process.env.FRONTEND_URL}/profile?message=Apple account linked successfully!`,
     );
+  }
+
+  /**
+   * Verify JWT for external services (public endpoint)
+   * @param dto { token: string }
+   * @returns { valid: boolean, payload?: Record<string, unknown> }
+   */
+  @Post('verify-jwt')
+  async verifyJwt(
+    @NestBody() dto: VerifyJwtDto,
+  ): Promise<{ valid: boolean; payload?: Record<string, unknown> }> {
+    try {
+      const payload = await this._jwtService.verifyAsync<
+        Record<string, unknown>
+      >(dto.token);
+      return { valid: true, payload };
+    } catch {
+      throw new UnauthorizedException('Invalid JWT');
+    }
   }
 }

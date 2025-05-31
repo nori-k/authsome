@@ -9,6 +9,7 @@ import type {
   PasskeyLoginFinishDto,
 } from './dto/auth.dto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { JwtModule } from '@nestjs/jwt';
 
 // テスト用型定義（interfaceで）
 interface TestVerifiedRegistrationResponse {
@@ -85,6 +86,7 @@ describe('AuthController', () => {
       redirect: jest.fn(),
     };
     const module: TestingModule = await Test.createTestingModule({
+      imports: [JwtModule.register({ secret: 'test' })],
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: authService },
@@ -419,6 +421,34 @@ describe('AuthController', () => {
       });
       expect(authService.deleteIdentity.mock.calls[0][0]).toBe('u');
       expect(authService.deleteIdentity.mock.calls[0][1]).toBe('id');
+    });
+  });
+
+  describe('verifyJwt', () => {
+    it('should return valid true and payload if JWT is valid', async () => {
+      // Arrange
+      const token = 'valid.jwt.token';
+      const payload = { sub: 'user1', email: 'a@b.com' };
+      // @ts-expect-error: partial mock
+      controller._jwtService = {
+        verifyAsync: jest.fn().mockResolvedValue(payload),
+      };
+      // Act
+      const result = await controller.verifyJwt({ token });
+      // Assert
+      expect(result).toEqual({ valid: true, payload });
+    });
+    it('should throw UnauthorizedException if JWT is invalid', async () => {
+      // Arrange
+      const token = 'invalid.jwt.token';
+      // @ts-expect-error: partial mock
+      controller._jwtService = {
+        verifyAsync: jest.fn().mockRejectedValue(new Error('invalid')),
+      };
+      // Act & Assert
+      await expect(controller.verifyJwt({ token })).rejects.toThrow(
+        'Invalid JWT',
+      );
     });
   });
 });
