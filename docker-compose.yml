@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   db:
-    image: postgres:16
+    image: postgres:17
     container_name: authsome-db
     restart: always
     environment:
