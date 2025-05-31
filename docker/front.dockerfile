@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.16
 
 FROM node:24-slim
 WORKDIR /app
