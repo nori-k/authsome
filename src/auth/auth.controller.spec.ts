@@ -132,15 +132,12 @@ describe('AuthController', () => {
         accessToken: 'a',
         refreshToken: 'r',
         userId: 'u',
+        email: 'a@b.com', // emailを追加
       };
       authService.loginEmailPassword.mockResolvedValue(result);
       await expect(
         controller.loginEmailPassword(dto, reply as FastifyReply),
-      ).resolves.toEqual({
-        accessToken: 'a',
-        refreshToken: 'r',
-        userId: 'u',
-      });
+      ).resolves.toEqual(result);
       expect(authService.loginEmailPassword.mock.calls[0][0]).toEqual({
         email: 'a@b.com',
         password: 'pw',

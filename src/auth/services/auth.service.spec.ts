@@ -106,6 +106,7 @@ describe('AuthService', () => {
         accessToken: 'jwt-token',
         refreshToken: 'jwt-token',
         userId: defaultUser.id,
+        email: defaultUser.email, // emailを追加
       });
     });
     it('throws if password is wrong', async () => {
