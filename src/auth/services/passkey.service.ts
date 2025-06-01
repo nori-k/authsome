@@ -10,6 +10,7 @@ import {
 } from '@simplewebauthn/server';
 import {
   PasskeyAttestationResponse,
+  PasskeyAttestationResponseInner,
   PasskeyAssertionResponse,
 } from '../dto/passkey.dto';
 import type { WebAuthnCredential } from '@prisma/client';
@@ -66,6 +67,51 @@ export class PasskeyService {
     return options;
   }
 
+  private async _getAndValidateUser(
+    userId: string,
+  ): Promise<{ id: string; email: string | null }> {
+    const user = await this._prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.email) {
+      throw new UnauthorizedException('User not found or email missing');
+    }
+    return user;
+  }
+
+  private _validateAttestationFields(
+    response: PasskeyAttestationResponse,
+  ): void {
+    if (
+      !response.rawId ||
+      !response.response?.attestationObject ||
+      !response.response?.clientDataJSON
+    ) {
+      throw new Error('Attestation invalid');
+    }
+  }
+
+  private _bufferizeAttestationResponse(
+    response: PasskeyAttestationResponse,
+  ): Omit<PasskeyAttestationResponse, 'rawId' | 'response'> & {
+    rawId: Buffer;
+    response: Omit<
+      PasskeyAttestationResponseInner,
+      'attestationObject' | 'clientDataJSON'
+    > & {
+      attestationObject: Buffer;
+      clientDataJSON: Buffer;
+    };
+  } {
+    return {
+      ...response,
+      rawId: Buffer.from(response.rawId),
+      response: {
+        ...response.response,
+        attestationObject: Buffer.from(response.response.attestationObject),
+        clientDataJSON: Buffer.from(response.response.clientDataJSON),
+      },
+    };
+  }
+
   /**
    * Verify FIDO2/WebAuthn registration response and store credential.
    * @param userId User id
@@ -78,33 +124,9 @@ export class PasskeyService {
     response: PasskeyAttestationResponse,
     challenge: string,
   ): Promise<VerifiedRegistrationResponse | null> {
-    const user = await this._prisma.user.findUnique({ where: { id: userId } });
-    if (
-      user?.email === undefined ||
-      user?.email === null ||
-      user.email === ''
-    ) {
-      throw new UnauthorizedException('User not found or email missing');
-    }
-    // 必須フィールドの存在チェック（テスト用の空オブジェクト対策）
-    if (
-      !response.rawId ||
-      !response.response?.attestationObject ||
-      !response.response?.clientDataJSON
-    ) {
-      throw new Error('Attestation invalid');
-    }
-    // DTO型のまま受け取り、WebAuthn呼び出し直前でBuffer変換
-    const bufferized = {
-      ...response,
-      rawId: Buffer.from(response.rawId),
-      response: {
-        ...response.response,
-        attestationObject: Buffer.from(response.response.attestationObject),
-        clientDataJSON: Buffer.from(response.response.clientDataJSON),
-      },
-    };
-    // as unknown でstrict型エラーを回避
+    const user = await this._getAndValidateUser(userId);
+    this._validateAttestationFields(response);
+    const bufferized = this._bufferizeAttestationResponse(response);
     const verification = await this._verifyAttestationResponse(
       bufferized as unknown,
       challenge,
