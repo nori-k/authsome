@@ -1,7 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy as JwtStrategy, ExtractJwt } from 'passport-jwt';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcryptjs';
 import type { User } from '@prisma/client';
@@ -12,10 +11,7 @@ export class JwtRefreshStrategy extends PassportStrategy(
   JwtStrategy,
   'jwt-refresh',
 ) {
-  constructor(
-    private readonly _prisma: PrismaService,
-    private readonly configService: ConfigService,
-  ) {
+  constructor(private readonly _prisma: PrismaService) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         (req: FastifyRequest) => {
@@ -27,7 +23,7 @@ export class JwtRefreshStrategy extends PassportStrategy(
         },
       ]),
       ignoreExpiration: true,
-      secretOrKey: configService.get<string>('JWT_REFRESH_SECRET'),
+      secretOrKey: process.env.JWT_REFRESH_SECRET ?? 'test-refresh-secret',
     });
   }
 

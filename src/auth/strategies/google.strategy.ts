@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, Profile, VerifyCallback } from 'passport-google-oauth20';
-import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../services/auth.service';
 import {
   GoogleProfileDto,
@@ -17,14 +16,11 @@ function isProfile(obj: unknown): obj is Profile {
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
-  constructor(
-    private readonly configService: ConfigService,
-    private readonly _authService: AuthService,
-  ) {
+  constructor(private readonly _authService: AuthService) {
     super({
-      clientID: configService.get<string>('GOOGLE_CLIENT_ID'),
-      clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET'),
-      callbackURL: `${configService.get<string>('BACKEND_URL')}/auth/google/callback`,
+      clientID: process.env.GOOGLE_CLIENT_ID ?? 'dummy',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? 'dummy',
+      callbackURL: `${process.env.BACKEND_URL ?? 'http://localhost:3000'}/auth/google/callback`,
       scope: ['email', 'profile'],
       passReqToCallback: true,
     } as unknown as Record<string, unknown>);

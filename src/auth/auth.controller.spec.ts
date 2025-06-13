@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AuthController } from './auth.controller';
 import { AuthService } from './services/auth.service';
@@ -29,10 +30,17 @@ interface TestPublicKeyCredentialCreationOptionsJSON {
 }
 import type { WebAuthnCredential, User } from '@prisma/client';
 
+// --- Vitest Mocked Type Helper ---
+type Mocked<T> = {
+  [K in keyof T]: T[K] extends (..._args: unknown[]) => unknown
+    ? ReturnType<typeof vi.fn> & T[K]
+    : T[K];
+};
+
 describe('AuthController', () => {
   let controller: AuthController;
-  let authService: jest.Mocked<AuthService>;
-  let passkeyService: jest.Mocked<PasskeyService>;
+  let authService: Mocked<AuthService>;
+  let passkeyService: Mocked<PasskeyService>;
   let reply: Partial<FastifyReply>;
 
   function createRequestMock(
@@ -63,27 +71,27 @@ describe('AuthController', () => {
 
   beforeEach(async () => {
     authService = {
-      registerEmailPassword: jest.fn(),
-      loginEmailPassword: jest.fn(),
-      generateTokens: jest.fn(),
-      refreshTokens: jest.fn(),
-      logout: jest.fn(),
-      getIdentities: jest.fn(),
-      deleteIdentity: jest.fn(),
-      findOrCreateUserAndIdentity: jest.fn(),
-      getProfile: jest.fn(),
-    } as unknown as jest.Mocked<AuthService>;
+      registerEmailPassword: vi.fn(),
+      loginEmailPassword: vi.fn(),
+      generateTokens: vi.fn(),
+      refreshTokens: vi.fn(),
+      logout: vi.fn(),
+      getIdentities: vi.fn(),
+      deleteIdentity: vi.fn(),
+      findOrCreateUserAndIdentity: vi.fn(),
+      getProfile: vi.fn(),
+    } as unknown as Mocked<AuthService>;
     passkeyService = {
-      generatePasskeyRegistrationOptions: jest.fn(),
-      verifyPasskeyRegistration: jest.fn(),
-      verifyPasskeyAuthentication: jest.fn(),
-      getPasskeyCredentials: jest.fn(),
-      deletePasskeyCredential: jest.fn(),
-    } as unknown as jest.Mocked<PasskeyService>;
+      generatePasskeyRegistrationOptions: vi.fn(),
+      verifyPasskeyRegistration: vi.fn(),
+      verifyPasskeyAuthentication: vi.fn(),
+      getPasskeyCredentials: vi.fn(),
+      deletePasskeyCredential: vi.fn(),
+    } as unknown as Mocked<PasskeyService>;
     reply = {
-      setCookie: jest.fn(),
-      clearCookie: jest.fn(),
-      redirect: jest.fn(),
+      setCookie: vi.fn(),
+      clearCookie: vi.fn(),
+      redirect: vi.fn(),
     };
     const module: TestingModule = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: 'test' })],
@@ -94,6 +102,15 @@ describe('AuthController', () => {
       ],
     }).compile();
     controller = module.get<AuthController>(AuthController);
+    // --- 依存サービスをコントローラのprivateプロパティに直接注入 ---
+    // @ts-expect-error: テスト用にprivateへ直接代入
+    controller._authService = authService;
+    // @ts-expect-error: テスト用にprivateへ直接代入
+    controller._passkeyService = passkeyService;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('should be defined', () => {
@@ -171,7 +188,7 @@ describe('AuthController', () => {
   describe('logout', () => {
     it('should clear cookies and call logout', async () => {
       const request = createRequestMock({ id: 'u' }, { refresh_token: 'r' });
-      authService.logout.mockResolvedValue();
+      authService.logout.mockResolvedValue(undefined);
       await expect(
         controller.logout(request, reply as FastifyReply),
       ).resolves.toEqual({
@@ -228,8 +245,8 @@ describe('AuthController', () => {
         options,
       );
       // unbound method警告回避: 直接参照せずarrow functionで呼び出し
-      const callArg =
-        passkeyService.generatePasskeyRegistrationOptions.mock.calls[0][0];
+      const callArg = passkeyService.generatePasskeyRegistrationOptions.mock
+        .calls[0][0] as string;
       expect(callArg).toBe('u');
     });
   });
@@ -264,12 +281,12 @@ describe('AuthController', () => {
       await expect(
         controller.finishPasskeyRegistration(request, dto),
       ).resolves.toEqual(verified);
-      const regCall0 =
-        passkeyService.verifyPasskeyRegistration.mock.calls[0][0];
-      const regCall1 =
-        passkeyService.verifyPasskeyRegistration.mock.calls[0][1];
-      const regCall2 =
-        passkeyService.verifyPasskeyRegistration.mock.calls[0][2];
+      const regCall0 = passkeyService.verifyPasskeyRegistration.mock
+        .calls[0][0] as string;
+      const regCall1 = passkeyService.verifyPasskeyRegistration.mock
+        .calls[0][1] as object;
+      const regCall2 = passkeyService.verifyPasskeyRegistration.mock
+        .calls[0][2] as string;
       expect(regCall0).toBe('u');
       expect(regCall1).toEqual({});
       expect(regCall2).toBe('c');
@@ -317,10 +334,10 @@ describe('AuthController', () => {
           dto,
         ),
       ).resolves.toEqual(result);
-      const authCall0 =
-        passkeyService.verifyPasskeyAuthentication.mock.calls[0][0];
-      const authCall1 =
-        passkeyService.verifyPasskeyAuthentication.mock.calls[0][1];
+      const authCall0 = passkeyService.verifyPasskeyAuthentication.mock
+        .calls[0][0] as object;
+      const authCall1 = passkeyService.verifyPasskeyAuthentication.mock
+        .calls[0][1] as string;
       expect(authCall0).toEqual(dto.response);
       expect(authCall1).toBe(dto.challenge);
     });
@@ -372,13 +389,14 @@ describe('AuthController', () => {
         updatedAt: new Date(),
       };
       const request = createRequestMock(user);
-      passkeyService.deletePasskeyCredential.mockResolvedValue();
+      passkeyService.deletePasskeyCredential.mockResolvedValue(undefined);
       await expect(
         controller.deletePasskeyCredential(request, 'cid'),
       ).resolves.toEqual({
         message: 'Passkey credential deleted successfully',
       });
-      const delCall1 = passkeyService.deletePasskeyCredential.mock.calls[0][1];
+      const delCall1 = passkeyService.deletePasskeyCredential.mock
+        .calls[0][1] as string;
       expect(delCall1).toBe('cid');
     });
   });
@@ -417,7 +435,7 @@ describe('AuthController', () => {
         updatedAt: new Date(),
       };
       const request = createRequestMock(user);
-      authService.deleteIdentity.mockResolvedValue();
+      authService.deleteIdentity.mockResolvedValue(undefined);
       await expect(controller.deleteIdentity(request, 'id')).resolves.toEqual({
         message: 'Identity deleted successfully',
       });
@@ -433,7 +451,7 @@ describe('AuthController', () => {
       const payload = { sub: 'user1', email: 'a@b.com' };
       // @ts-expect-error: partial mock
       controller._jwtService = {
-        verifyAsync: jest.fn().mockResolvedValue(payload),
+        verifyAsync: vi.fn().mockResolvedValue(payload),
       };
       // Act
       const result = await controller.verifyJwt({ token });
@@ -445,7 +463,7 @@ describe('AuthController', () => {
       const token = 'invalid.jwt.token';
       // @ts-expect-error: partial mock
       controller._jwtService = {
-        verifyAsync: jest.fn().mockRejectedValue(new Error('invalid')),
+        verifyAsync: vi.fn().mockRejectedValue(new Error('invalid')),
       };
       // Act & Assert
       await expect(controller.verifyJwt({ token })).rejects.toThrow(

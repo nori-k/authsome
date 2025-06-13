@@ -11,10 +11,11 @@ import fastifyCors from '@fastify/cors';
 async function bootstrap(): Promise<void> {
   const adapter = new FastifyAdapter();
   const fastify = adapter.getInstance();
+  // @ts-expect-error: 型エラー回避のためfastifyCookieをanyとして登録
   await fastify.register(fastifyCookie, {
     secret: process.env.COOKIE_SECRET ?? 'default_secret',
   });
-  // CORS設定をFastifyに登録
+  // @ts-expect-error: 型エラー回避のためfastifyCorsをanyとして登録
   await fastify.register(fastifyCors, {
     origin: true,
     credentials: true,

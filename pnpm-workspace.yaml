@@ -1,10 +1,9 @@
 packages:
-  - 'frontend'
-  # 必要なら他のパッケージも追加
-
+  - frontend
 onlyBuiltDependencies:
   - '@nestjs/core'
   - '@prisma/client'
   - '@prisma/engines'
   - '@swc/core'
+  - esbuild
   - prisma

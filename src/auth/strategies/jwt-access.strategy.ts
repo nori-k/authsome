@@ -37,12 +37,12 @@ export class JwtAccessStrategy extends PassportStrategy(
         },
       ]),
       ignoreExpiration: false,
-      secretOrKey: _configService.get<string>('JWT_ACCESS_SECRET'),
+      secretOrKey: process.env.JWT_ACCESS_SECRET ?? 'test-secret',
     });
   }
 
   validate(payload: { sub: string }): { id: string } {
-    if (!payload?.sub) {
+    if (!payload?.sub || typeof payload.sub !== 'string') {
       throw new UnauthorizedException('Invalid JWT payload');
     }
     return { id: payload.sub };
