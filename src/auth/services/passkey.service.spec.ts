@@ -276,10 +276,7 @@ describe('PasskeyService', () => {
       ).rejects.toThrow('Credential not found or not owned by user');
     });
   });
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   interface Validator {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
     _validateAttestationFields: (_r: unknown) => void;
   }
 
@@ -307,7 +304,7 @@ describe('PasskeyService', () => {
     it('throws if attestationObject is missing', () => {
       const s = getValidator();
       const input = makeBase();
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+
       // @ts-expect-error: 故意に型不正
       input.response.attestationObject = undefined;
       expect(() => s._validateAttestationFields(input)).toThrowError(
@@ -317,7 +314,7 @@ describe('PasskeyService', () => {
     it('throws if clientDataJSON is missing', () => {
       const s = getValidator();
       const input = makeBase();
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+
       // @ts-expect-error: 故意に型不正
       input.response.clientDataJSON = undefined;
       expect(() => s._validateAttestationFields(input)).toThrowError(
